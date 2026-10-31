@@ -1,4 +1,8 @@
 """Recursive methods: Python child calls, typed leaves and position settings."""
+from __future__ import annotations
+from typing import Any, Callable, Iterable, Mapping, TYPE_CHECKING
+if TYPE_CHECKING:
+    from .runner import Runner
 import json
 from dataclasses import asdict
 from pydantic import BaseModel
@@ -7,18 +11,19 @@ from .fingerprint import fingerprint
 from .route import Prediction, RouteFailure, route as select_route
 
 
-def json_value(value):
+def json_value(value: Any) -> Any:
     return value.model_dump(mode='json') if isinstance(value, BaseModel) else value
 
 
 class Operation:
-    Input = Output = None
+    Input: type[BaseModel] | None = None
+    Output: type[BaseModel] | None = None
     composition = ''
     sources = ()
     caller = None
     retry = False
 
-    def __init__(self, name=None, *, run=None, composition=None, sources=(), structure=None, caller=None):
+    def __init__(self, name: str | None = None, *, run: Callable[[Children, Any], Any] | None = None, composition: str | None = None, sources: tuple = (), structure: dict | None = None, caller: Callable[[dict], dict] | None = None) -> None:
         self.name = name or type(self).__name__
         self.body = run
         self.composition = self.composition if composition is None else composition
@@ -26,13 +31,13 @@ class Operation:
         self.structure = structure or {}
         self.caller = caller or self.caller
 
-    def run(self, children, input):
+    def run(self, children: Children, input: Any) -> Any:
         if self.body is not None:
             return self.body(children, input)
         from .model import execute
         return execute(self, children, input)
 
-    def __call__(self, runner, input, *, name=None, node=None, kind=None, depends_on=(), _parent=None, _position=None):
+    def __call__(self, runner: Runner, input: Any, *, name: str | None = None, node: str | None = None, kind: str | None = None, depends_on: Iterable[str] = (), _parent: str | None = None, _position: str | None = None) -> Any:
         input = self.Input.model_validate(input) if self.Input else input
         context = Children(runner, node or name or self.name, _parent, _position or self.name, self)
         sources = (type(self), *self.sources)
@@ -58,7 +63,7 @@ class Operation:
 
 
 class Children:
-    def __init__(self, runner, node, parent, position, operation):
+    def __init__(self, runner: Runner, node: str, parent: str | None, position: str, operation: Operation) -> None:
         self.runner, self.node, self.parent, self.position = runner, node, parent, position
         self.composition = operation.composition
         self.purpose = (type(operation).__doc__ or '').strip()
@@ -71,15 +76,15 @@ class Children:
         self.seen = {}
 
     @property
-    def details(self):
+    def details(self) -> dict:
         return self.runner.index()[self.node].details
 
-    def evidence(self, ref):
+    def evidence(self, ref: dict) -> None:
         with self.runner.lock:
             self.details.setdefault('evidence', []).append(ref)
             self.runner.save()
 
-    def __call__(self, name, operation, input, *, node=None, kind=None, depends_on=(), order=None):
+    def __call__(self, name: str, operation: Operation, input: Any, *, node: str | None = None, kind: str | None = None, depends_on: Iterable[str] = (), order: int | None = None) -> Any:
         if not self.composition:
             raise ValueError('An Operation calling children must declare composition')
         node = node or self.node + '/' + str(name)
@@ -97,7 +102,7 @@ def _compose(name, form, operations, body, **structure):
                      structure={'available_children': [op.name for op in operations], **structure})
 
 
-def sequence(name, operations):
+def sequence(name: str, operations: Iterable[Operation]) -> Operation:
     operations = list(operations)
     def run(children, value):
         for i, op in enumerate(operations):
@@ -107,13 +112,13 @@ def sequence(name, operations):
     return _compose(name, 'sequence', operations, run)
 
 
-def bundle(name, operations):
+def bundle(name: str, operations: Mapping[str, Operation]) -> Operation:
     operations = dict(operations)
     return _compose(name, 'bundle', operations.values(), lambda c, value:
                     {key: json_value(c(key, op, value)) for key, op in operations.items()}, names=list(operations))
 
 
-def for_each(name, operation, *, key):
+def for_each(name: str, operation: Operation, *, key: Callable[[Any], Any]) -> Operation:
     def run(children, values):
         ids = [str(key(value)) for value in values]
         if len(set(ids)) != len(ids):
@@ -126,7 +131,7 @@ def for_each(name, operation, *, key):
     return result
 
 
-def iterate(name, operation, *, bound, stop):
+def iterate(name: str, operation: Operation, *, bound: int, stop: Callable[[Any], bool]) -> Operation:
     if isinstance(bound, bool) or not isinstance(bound, int) or bound < 1:
         raise ValueError('Iteration bound must be a positive integer')
     def run(children, value):
@@ -143,7 +148,7 @@ def iterate(name, operation, *, bound, stop):
     return result
 
 
-def route(name, local, frontier, *, valid=lambda answer: answer is not None):
+def route(name: str, local: Operation, frontier: Operation, *, valid: Callable[[Any], bool] = lambda answer: answer is not None) -> Operation:
     def run(children, value):
         try:
             result = select_route(children.node, value,

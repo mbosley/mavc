@@ -1,4 +1,8 @@
 """Explicit Python steps, content cache, bounded retries and downstream reruns."""
+from __future__ import annotations
+from typing import Any, Callable, Iterable, TYPE_CHECKING
+if TYPE_CHECKING:
+    from .operation import Children
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import RLock
@@ -47,7 +51,7 @@ class RetainedFailure(RuntimeError):
         super().__init__(f'{node}: {outcome.reason}; use explicit rerun-from')
 
 
-def failure_outcome(error):
+def failure_outcome(error: Exception) -> Outcome:
     if isinstance(error, RetainedFailure):
         return error.outcome
     status = {Rejected: 'rejected', NeedsCorrection: 'needs_correction',
@@ -56,8 +60,8 @@ def failure_outcome(error):
 
 
 class Runner:
-    def __init__(self, folder, declaration, *, implementations=None, sources=(), metadata=None, rerun_from=None, reuse_from=None,
-                 protect_reused=False):
+    def __init__(self, folder: str | Path, declaration: Declaration | dict, *, implementations: dict | None = None, sources: tuple = (), metadata: dict | None = None, rerun_from: str | None = None, reuse_from: str | Path | None = None,
+                 protect_reused: bool = False) -> None:
         self.folder = Path(folder)
         self.folder.mkdir(parents=True, exist_ok=True)
         self.declaration = Declaration.model_validate(declaration)
@@ -73,7 +77,12 @@ class Runner:
                 raise ValueError('A correction needs a fresh destination run directory')
             self.record = RunRecord.model_validate(read_json(self.record_path))
             if self.record.declaration_sha256 != digest(snapshot):
-                raise NewRunRequired('Changed declaration needs a new run directory')
+                previous = read_json(self.folder / 'declaration.json')
+                changed = [f'positions.{key}' for key in sorted(set(previous.get('positions', {})) | set(snapshot.get('positions', {})))
+                           if previous.get('positions', {}).get(key) != snapshot.get('positions', {}).get(key)]
+                changed += [key for key in sorted(set(previous) | set(snapshot)) if key != 'positions' and previous.get(key) != snapshot.get(key)]
+                raise NewRunRequired(f'Changed declaration: {", ".join(changed)}; use a new run directory. '
+                                     'Keep the prior directory to inspect or selectively reuse unchanged work')
         else:
             self.record = RunRecord(declaration_sha256=digest(snapshot), metadata={**(metadata or {}), 'dependencies': {name: importlib.metadata.version(name)
                 for name in ['pydantic', 'diskcache', 'tenacity']}})
@@ -87,7 +96,7 @@ class Runner:
                     known = {k: v for k, v in node.implementation.items()
                              if k in expected or not k.startswith('caller/source/')}
                     if known != expected:
-                        raise NewRunRequired('Changed implementation needs a new run directory')
+                        raise NewRunRequired(f'Node {node.node!r}: implementation changed; use a new run directory')
         self.original = self.record.model_copy(deep=True)
         self.cache = Cache(str(self.folder / 'cache'))
         self.protected = set()  # with protect_reused: prior completed nodes that must come from the cache, never a new call
@@ -108,7 +117,7 @@ class Runner:
         self.record = self.record.model_copy(update={'invocations': [*self.record.invocations, self.invocation]})
         self.save()
 
-    def implementation_for(self, kind, operation=None, sources=()):
+    def implementation_for(self, kind: str, operation: Callable | None = None, sources: tuple = ()) -> dict:
         sources = self.sources + tuple(sources)
         caller = self.implementations.get(kind)
         if caller is None:
@@ -117,18 +126,18 @@ class Runner:
             caller = {**caller, **fingerprint(None, sources)}
         return {**self.core, **{'caller/' + name: value for name, value in caller.items()}}
 
-    def save(self):
+    def save(self) -> None:
         write_json(self.record_path, self.record.model_dump())
 
-    def index(self):
+    def index(self) -> dict[str, NodeRecord]:
         return dict(walk_nodes(self.record))
 
-    def retain(self, artifact):
+    def retain(self, artifact: Artifact) -> Artifact:
         write_json(self.folder / 'outputs/objects' / (artifact.sha256 + '.json'), artifact.model_dump())
         return artifact
 
     @staticmethod
-    def descendants(record, node):
+    def descendants(record: RunRecord, node: str) -> set[str]:
         index = dict(walk_nodes(record))
         selected = {name for name, rec in index.items() if name == node or rec.kind == node}
         if not selected:
@@ -146,8 +155,8 @@ class Runner:
                 return selected
             selected |= downstream
 
-    def step(self, node, input, operation, *, kind=None, sources=(), depends_on=(), retry=False,
-             output_type='node-result/v1', context=None):
+    def step(self, node: str, input: Any, operation: Callable[[], Any], *, kind: str | None = None, sources: tuple = (), depends_on: Iterable[str] = (), retry: bool = False,
+             output_type: str = 'node-result/v1', context: Children | None = None) -> Any:
         """Operation returns JSON only. Call and scientific check are separate steps."""
         kind = kind or node
         base = self.declaration.for_position(context.position) if context else self.declaration.for_node(kind)
@@ -176,7 +185,9 @@ class Runner:
             old = nodes.get(node)
             same = old and old.input_sha256 == input_hash and old.declaration_sha256 == declaration_hash
             if old and not same:
-                raise NewRunRequired('Changed node inputs or implementation need a new run directory')
+                changed = 'input' if old.input_sha256 != input_hash else 'implementation, settings or dependencies'
+                raise NewRunRequired(f'Node {node!r}: {changed} changed; use a new run directory. '
+                                     'Keep the prior directory; use reuse_from with rerun_from for selective correction')
             attempts, errors = (old.attempts, old.errors) if same else (0, [])
             rec = NodeRecord(node=node, kind=kind, input=artifact.ref(), input_sha256=input_hash,
                 declaration=declaration, declaration_sha256=declaration_hash, implementation=implementation,
@@ -195,7 +206,7 @@ class Runner:
                 return output.value
             if not composite and node in self.protected:
                 raise ProtectedReuseMiss(f'{node}: completed in the reused run but its input or declaration changed; '
-                                         'refusing to call it again')
+                                         'refusing to call it again. Use a new run directory with rerun_from selecting this node')
             retry_type = ToolFailure if settings.get('retry_on') == 'tool_failure' else RetryableFailure
             if not composite and same and old.errors and old.errors[-1]['type'] != retry_type.__name__:
                 raise RetainedFailure(node, old.outcome)
@@ -217,7 +228,7 @@ class Runner:
                 if composite:
                     if set(rec.children) != set(context.seen) or (old and old.outcome.status == 'completed'
                             and set(old.children) != set(context.seen)):
-                        raise NewRunRequired('Changed child inventory needs a new run directory')
+                        raise NewRunRequired(f'Node {node!r}: child inventory changed; use a new run directory')
                     rec = rec.model_copy(update={'children': {name: rec.children[name] for name in
                         sorted(context.seen, key=context.seen.get)}})
                     if not complete_children(rec):
@@ -244,11 +255,11 @@ class Runner:
             self.save()
         return value
 
-    def fanout(self, items, operation, *, max_concurrency=None):
+    def fanout(self, items: Iterable[Any], operation: Callable[[Any], Any], *, max_concurrency: int | None = None) -> list[Any]:
         with ThreadPoolExecutor(max_workers=max_concurrency or self.declaration.execution.get('max_concurrency', 1)) as pool:
             return list(pool.map(operation, items))
 
-    def finish(self, output, *, type='flow-output/v1', outcome=None):
+    def finish(self, output: Any, *, type: str = 'flow-output/v1', outcome: Outcome | None = None) -> None:
         outcome = outcome or Outcome(status='completed')
         if outcome.status == 'completed' and (not self.record.nodes or any(
                 n.outcome.status != 'completed' for n in self.record.nodes.values())):
@@ -257,15 +268,15 @@ class Runner:
         self.record = self.record.model_copy(update={'outputs': artifact.ref(), 'outcome': outcome})
         self.save()
 
-    def close(self):
+    def close(self) -> None:
         self.invocation['ended_at'] = now()
         self.save()
         self.cache.close()
 
-    def __enter__(self):
+    def __enter__(self) -> Runner:
         return self
 
-    def __exit__(self, typ, error, traceback):
+    def __exit__(self, typ: Any, error: BaseException | None, traceback: Any) -> None:
         if isinstance(error, NewRunRequired):
             self.record = self.original
         elif error:

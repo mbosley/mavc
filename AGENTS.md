@@ -1,0 +1,11 @@
+# Working with MAVC
+
+MAVC records plain-Python research flows. Read [docs/api.md](docs/api.md) for signatures and terms, and [docs/tutorial.md](docs/tutorial.md) for a runnable offline model → code-check flow.
+
+- Define a step by subclassing `Operation`. Set Pydantic `Input` and `Output` classes. For a code step, implement `run(self, children, input)` and return its output value. For a model step, leave `run` inherited and supply `caller=adapter`; the class docstring becomes its system prompt. `mavc.stub.classify` is a bundled offline tutorial adapter, not a scientific classifier.
+- Configure model settings under the full position: parent position + `"."` + operation name. `for_each('LabelAll', Classify(caller=adapter), key=...)` uses `positions['LabelAll.Classify']`; inside `sequence('Review', ...)` it uses `Review.LabelAll.Classify`. This differs from slash-separated executed node IDs.
+- Run inside `with Runner(folder, declaration) as runner:`, call `answer = flow(runner, input)`, then `runner.finish(answer)`. A typed leaf returns a Pydantic model: finish with `answer.model_dump(mode='json')`. Built-in composites return JSON-compatible data. Use a source `.py` file for operations; notebooks can import it.
+- Use `mavc describe <run> --summary` for structure, `mavc show <run>` for final output and node IDs, and `mavc show <run> <node>` for input, output, errors and evidence. Python: `mavc.record.show`. See [docs/records.md](docs/records.md).
+- Never edit retained records, artifacts or caches. Reuse a directory only for unchanged work. Use a new run folder whenever inputs, settings, prompts or code change; selective correction uses a fresh folder with `reuse_from` and `rerun_from`.
+- Keep scientific definitions, thresholds and acceptance rules with the user. Type checks, consistent records and successful model transport do not establish scientific correctness. Use explicit code checks and `Rejected`/`NeedsHumanReview` where the user's rules require them.
+- Verify changes with `python -m pytest` after `python -m pip install -e '.[test,evals]'`. Run `python examples/offline.py` and `python examples/tutorial.py` using fresh run folders after changing source. No live provider or paid call is needed for these checks.

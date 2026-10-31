@@ -6,7 +6,7 @@ from pathlib import Path
 from .tree import walk_nodes
 
 
-def describe(folder, *, summary=False, details=False):
+def describe(folder: str | Path, *, summary: bool = False, details: bool = False) -> str:
     if Path(folder).is_file():
         declaration = json.loads(Path(folder).read_text())
         from .declare import Declaration
@@ -54,18 +54,29 @@ def describe(folder, *, summary=False, details=False):
     if summary:
         ref = record.get('outputs')
         value = json.loads((Path(folder) / 'outputs/objects' / (ref['sha256'] + '.json')).read_text())['value'] if ref else {}
-        lines.extend(['results:'] + [f"  {key}: {len(v) if isinstance(v, list) else v}" for key, v in (value if isinstance(value, dict) else {'output items': value}).items() if type(v) in (int, float, list)])
+        lines.extend(['results:'] + [f"  {key}: {len(v) if isinstance(v, list) else json.dumps(v, ensure_ascii=False)}" for key, v in (value if isinstance(value, dict) else {'output items': value}).items() if type(v) in (int, float, list, dict)])
         lines.append(f"  failed steps: {sum(n['outcome']['status'] == 'failed' for _, n in walk_nodes(record, leaves_only=True))}")
     if details:
         lines.append('Recorded details (available_children are templates, not execution counts):\n' + json.dumps(record, indent=2, sort_keys=True))
     return '\n'.join(lines)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(prog='mavc')
-    parser.add_argument('command', choices=['describe'])
-    parser.add_argument('folder')
-    parser.add_argument('--summary', action='store_true')
-    parser.add_argument('--details', action='store_true')
+    commands = parser.add_subparsers(dest='command', required=True)
+    outline = commands.add_parser('describe', help='Describe a flow or run')
+    outline.add_argument('folder')
+    outline.add_argument('--summary', action='store_true')
+    outline.add_argument('--details', action='store_true')
+    values = commands.add_parser('show', help='Read final results or one node with its evidence as JSON')
+    values.add_argument('folder')
+    values.add_argument('node', nargs='?')
     args = parser.parse_args()
-    print(describe(args.folder, summary=args.summary, details=args.details))
+    if args.command == 'show':
+        from .record import show
+        try:
+            print(json.dumps(show(args.folder, args.node), indent=2, ensure_ascii=False))
+        except ValueError as exc:
+            parser.exit(2, f'{exc}\n')
+    else:
+        print(describe(args.folder, summary=args.summary, details=args.details))

@@ -1,4 +1,6 @@
 """A declaration is configuration, not a flow compiler."""
+from __future__ import annotations
+from typing import Iterable
 import hashlib
 from pathlib import Path
 from typing import Literal
@@ -46,11 +48,11 @@ class Declaration(Model):
     context: dict = {}
     execution: dict = {}
 
-    def for_node(self, kind):
+    def for_node(self, kind: str) -> dict:
         return {'flow_id': self.flow_id, 'node': self.nodes.get(kind, {}),
                 'context': self.context, 'execution': self.execution}
 
-    def for_position(self, position):
+    def for_position(self, position: str) -> dict:
         settings = self.positions.get(position, Settings()).model_dump(exclude_unset=True)
         historical = 'legacy' in settings
         legacy = settings.pop('legacy', {})
@@ -71,7 +73,7 @@ class Declaration(Model):
         call_attempts(settings)
         return {**self.for_node(''), 'node': settings, 'position': position}
 
-    def snapshot(self):
+    def snapshot(self) -> dict:
         value = self.model_dump(exclude={'positions'})
         if self.positions:
             value['positions'] = {k: v.model_dump(exclude_unset=True) if 'legacy' in v.model_fields_set
@@ -79,18 +81,18 @@ class Declaration(Model):
         return value
 
     @classmethod
-    def load(cls, path):
+    def load(cls, path: str | Path) -> Declaration:
         return cls.model_validate(read_json(path))
 
 
-def source_identity(files, root):
+def source_identity(files: Iterable[str | Path], root: str | Path) -> dict[str, str]:
     """Relative filenames and content hashes, usable after a repository move."""
     root = Path(root).resolve()
     return {str(Path(p).resolve().relative_to(root)): hashlib.sha256(Path(p).read_bytes()).hexdigest()
             for p in sorted(map(Path, files))}
 
 
-def call_attempts(node):
+def call_attempts(node: dict) -> int:
     """One retry owner. Internal Pi retries consume the call budget themselves."""
     count = node.get('maximum_attempts', node.get('retry', {}).get('max_attempts', 1))
     if not isinstance(count, int) or isinstance(count, bool) or count < 1:

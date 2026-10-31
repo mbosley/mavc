@@ -1,4 +1,6 @@
 """Small JSON artifacts and honest, provider-free run records."""
+from __future__ import annotations
+from typing import Iterable
 import hashlib
 import json
 import os
@@ -22,11 +24,11 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def read_json(path):
+def read_json(path: str | Path) -> Any:
     return json.loads(Path(path).read_text())
 
 
-def write_json(path, value):
+def write_json(path: str | Path, value: Any) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.write-')
@@ -51,7 +53,7 @@ class Artifact(Model):
     sha256: str
 
     @classmethod
-    def create(cls, type, value, lineage=()):
+    def create(cls, type: str, value: Any, lineage: Iterable[str] = ()) -> Artifact:
         body = {'type': type, 'value': value, 'lineage': list(lineage)}
         return cls(**body, sha256=digest(body))
 
@@ -61,7 +63,7 @@ class Artifact(Model):
             raise ValueError('Artifact content hash differs')
         return self
 
-    def ref(self):
+    def ref(self) -> dict[str, str]:
         return {'type': self.type, 'sha256': self.sha256}
 
 
@@ -108,14 +110,33 @@ def complete_children(node):
         node.children[name].outcome.status == 'completed' for name in required)
 
 
-def resolve(folder, ref):
+def resolve(folder: str | Path, ref: dict[str, str]) -> Artifact:
     artifact = Artifact.model_validate(read_json(Path(folder) / 'outputs/objects' / (ref['sha256'] + '.json')))
     if artifact.ref() != ref:
         raise ValueError('Artifact reference differs')
     return artifact
 
 
-def verify(folder):
+def show(folder: str | Path, node: str | None = None) -> dict[str, Any]:
+    """Read final results or one node's values and evidence without hash navigation."""
+    record = read_json(Path(folder) / 'record.json')
+    nodes = dict(walk_nodes(record))
+    if node is None:
+        return {'outcome': record['outcome'],
+                'output': resolve(folder, record['outputs']).value if record.get('outputs') else None,
+                'nodes': {name: {'position': row.get('position', ''), 'outcome': row['outcome']}
+                          for name, row in nodes.items()}}
+    if node not in nodes:
+        raise ValueError(f'Unknown node {node!r}. Available nodes: {", ".join(nodes) or "(none)"}')
+    row = nodes[node]
+    return {**{key: row.get(key) for key in ('node', 'position', 'outcome', 'attempts', 'reused', 'errors')},
+            'input': resolve(folder, row['input']).value if row.get('input') else None,
+            'output': resolve(folder, row['output']).value if row.get('output') else None,
+            'evidence': [{'type': ref['type'], 'value': resolve(folder, ref).value}
+                         for ref in row.get('details', {}).get('evidence', [])]}
+
+
+def verify(folder: str | Path) -> dict[str, Any]:
     """Check retained inputs/results; domain checks belong to the calling flow."""
     folder = Path(folder)
     record = RunRecord.model_validate(read_json(folder / 'record.json'))
