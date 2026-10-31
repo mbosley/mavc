@@ -104,8 +104,8 @@ def test_rejection_keeps_call_and_never_retries(tmp_path):
 
 
 @pytest.mark.parametrize('inner', [
-    {'pi_settings': {'retry': {'enabled': True, 'maxRetries': 3}}},
-    {'pi_retry': {'provider_max_retries': 1}},
+    {'harness_settings': {'retry': {'enabled': True, 'maxRetries': 3}}},
+    {'harness_retry': {'provider_max_retries': 1}},
     {'provider_retry': {'max_retries': 2}},
 ])
 def test_single_retry_owner(inner):

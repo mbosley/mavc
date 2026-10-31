@@ -12,8 +12,8 @@ def call(request: dict[str, Any]) -> dict[str, Any]:
     settings = node.get('settings', {})
     if node['provider'] != 'anthropic' or node['reasoning'] not in ('low', 'medium', 'high', 'xhigh', 'max'):
         raise ValueError('Use provider=anthropic and a supported reasoning effort such as low')
-    if settings.get('transport') != 'json' or settings.get('tools') or node.get('tool_manifest') or node.get('pi_settings'):
-        raise ValueError('This example requires settings.transport=json, no tools and no pi_settings')
+    if settings.get('transport') != 'json' or settings.get('tools') or node.get('tool_manifest') or node.get('harness_settings'):
+        raise ValueError('This example requires settings.transport=json, no tools and no harness_settings')
     if 'temperature' in settings:
         raise ValueError('This example does not support temperature')
     schema = json.loads(request['prompt'])['output_schema']

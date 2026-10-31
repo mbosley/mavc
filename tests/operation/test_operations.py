@@ -57,7 +57,7 @@ def test_effective_partial_settings_and_explicit_legacy(tmp_path, position):
         assert effective == position['legacy'] and saved == position
     else:
         assert saved == effective and effective['settings']['tools'] == []
-        assert effective['timeout_seconds'] == 600 and not effective['pi_retry']['agent_enabled']
+        assert effective['timeout_seconds'] == 600 and not effective['harness_retry']['agent_enabled']
     with pytest.raises(ValidationError):
         Declaration.model_validate({'flow_id': 'x', 'positions': {'Add': {'reasioning': 'high'}}})
     with pytest.raises(ValidationError):

@@ -19,8 +19,8 @@ def request():
     node = {'provider':'fixture','model':'fixture-model','reasoning':'high','timeout_seconds':30,
         'settings':{'tools':[],'transport':'sse','compaction':False,'cache_warming':'off',
                     'max_output_tokens':80,'temperature':.2},
-        'pi_retry':{'agent_enabled':False,'provider_max_retries':0},'maximum_attempts':1,'pi_version':'1.0.4'}
-    return {'node':node,'pi_version':'1.0.4','system_prompt':'fixture instructions','prompt':'Exact quote: café\n  preserved.'}
+        'harness_retry':{'agent_enabled':False,'provider_max_retries':0},'maximum_attempts':1,'harness_version':'1.4.0'}
+    return {'node':node,'harness_version':'1.4.0','system_prompt':'fixture instructions','prompt':'Exact quote: café\n  preserved.'}
 
 
 def response(req):
@@ -31,7 +31,7 @@ def response(req):
     return {'text':'{"result":"unchecked science"}','error':None,'stop_reason':'stop','exit_code':0,
         'actual_requests':[deepcopy(payload)],'upstream_response':{'model':node['model'],'status':'completed'},
         'observed':{'model':node['model'],'reasoning':node['reasoning'],'provider':'fixture',
-          'active_tools':[],'pi_version':'1.0.4','request':{**payload,'transport':'sse'},'response':{'status':200},
+          'active_tools':[],'harness_version':'1.4.0','request':{**payload,'transport':'sse'},'response':{'status':200},
           'resolved_settings':{'compaction':{'enabled':False},'cache_warming':'off','transport':'sse',
                               'retry':{'enabled':False,'maxRetries':0},'provider_retry':{'maxRetries':0}}}}
 
@@ -63,7 +63,7 @@ def ordinary(req):return reply(req)
 class Legacy(Mention):
     def render(self, input, settings, children):
         return {'node':settings,'system_prompt':'legacy exact instructions','prompt':input.text,
-                **{key:settings[key] for key in ('pi_version','pi_settings','route','terminal_tool') if key in settings}}
+                **{key:settings[key] for key in ('harness_version','harness_settings','terminal_tool') if key in settings}}
 
 
 class CaptureCaller:
@@ -111,7 +111,7 @@ class ModelTests(unittest.TestCase):
             self.assertEqual(first['system_prompt'],Mention.__doc__)
             self.assertEqual(node['timeout_seconds'],600)
             self.assertEqual(node['settings'],{'tools':[],'compaction':False,'cache_warming':'off','transport':'sse'})
-            self.assertEqual(node['pi_retry'],{'agent_enabled':False,'provider_max_retries':0})
+            self.assertEqual(node['harness_retry'],{'agent_enabled':False,'provider_max_retries':0})
             actual=op(run,{'text':'Parliament\n  exact'})
             self.assertTrue(actual.mentioned)
             raw=self.evidence(run,'Mention')
@@ -151,7 +151,7 @@ class ModelTests(unittest.TestCase):
           ('transport',lambda r:r['observed']['request'].update(transport='websocket')),
           ('agent_enabled',lambda r:r['observed']['resolved_settings']['retry'].update(enabled=True)),
           ('provider_max_retries',lambda r:r['observed']['resolved_settings']['provider_retry'].update(maxRetries=2)),
-          ('pi_version',lambda r:r['observed'].update(pi_version='changed')),
+          ('harness_version',lambda r:r['observed'].update(harness_version='changed')),
           ('HTTP429',lambda r:r.update(error='HTTP429 capacity',provider_attempts=[{'status':429,'attempt':1}])),
           ('partial',lambda r:r.update(stop_reason='length')),
           ('incomplete',lambda r:r['upstream_response'].update(status='incomplete')),
@@ -175,24 +175,23 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(checks['mismatches'],[])
         self.assertIn('actual_requests',checks['unobserved']);self.assertIn('node.settings.compaction',checks['unobserved'])
 
-    def test_actual_tool_schema_strictness_and_terminal_proposal_are_retained(self):
-        node={**self.old,'tools':['submit'],'terminal_tool':'submit',
-              'pool_transport':{'version':'bb-responses-nonstrict-v1','ordinary_function_strict':False}}
-        req={'node':node,'pi_version':node['pi_version'],'terminal_tool':'submit',
+    def test_actual_tool_manifest_and_terminal_proposal_are_retained(self):
+        node={**self.old,'tools':['submit'],'terminal_tool':'submit'}
+        req={'node':node,'harness_version':node['harness_version'],'terminal_tool':'submit',
              'system_prompt':'legacy exact instructions','prompt':'Exact scientific input'}
         good=response(req)
         tool={'type':'function','name':'submit','strict':False,
               'parameters':{'type':'object','properties':{'evidence':{'type':'string'}}}}
         good.update(stop_reason='toolUse',text='acknowledgment',proposal={'mentioned':False,'evidence':req['prompt']})
         good['observed']['active_tools']=['submit']
-        good['observed']['request'].update(tools=[deepcopy(tool)],pool_transport=node['pool_transport'])
+        good['observed']['request'].update(tools=[deepcopy(tool)])
         good['actual_requests'][0]['tools']=[deepcopy(tool)]
         declaration={'Legacy':{'legacy':node}}
         with self.runner(declaration,self.folder/'good') as run:
             value=Legacy(caller=CaptureCaller(good))(run,{'text':req['prompt']})
             self.assertEqual(value.evidence,req['prompt'])
             self.assertEqual(self.evidence(run,'Legacy')['response'],good)
-        for label,mutate in [('strict',lambda r:r['actual_requests'][0]['tools'][0].update(strict=True)),
+        for label,mutate in [('tool name',lambda r:r['actual_requests'][0]['tools'][0].update(name='wrong')),
                              ('missing proposal',lambda r:r.update(proposal=None))]:
             with self.subTest(label=label),self.runner(declaration,self.folder/label) as run:
                 bad=deepcopy(good);mutate(bad)
@@ -204,14 +203,14 @@ class ModelTests(unittest.TestCase):
         class Bad(Mention):
             def render(self,input,settings,children):
                 value=render(self,input,settings,children)
-                value['pi_settings']={'retry':{'enabled':True}}
+                value['harness_settings']={'retry':{'enabled':True}}
                 return value
         caller=CaptureCaller();op=Bad(caller=caller)
         with self.runner({'Bad':self.new}) as run:
             with self.assertRaisesRegex(RuntimeError,'Rendered request settings differ'):op(run,{'text':'source'})
             raw=self.evidence(run,'Bad')
             self.assertIsNone(raw['response']);self.assertEqual(len(run.cache),0)
-            self.assertIn('pi_settings',raw['request'])
+            self.assertIn('harness_settings',raw['request'])
         self.assertEqual(caller.calls,0)
 
     def test_missing_position_and_conflicting_retry_ownership_do_not_call(self):
@@ -219,7 +218,7 @@ class ModelTests(unittest.TestCase):
         with self.runner({'Other':self.new}) as run:
             with self.assertRaisesRegex(ValueError,'requires provider'):op(run,{'text':'source'})
             self.assertEqual(run.index(), {})
-        invalid={**self.new,'maximum_attempts':2,'pi_retry':{'agent_enabled':True}}
+        invalid={**self.new,'maximum_attempts':2,'harness_retry':{'agent_enabled':True}}
         with self.assertRaisesRegex(ValueError,'one outer'):
             self.runner({'Mention':invalid},self.folder/'retry')
         self.assertEqual(caller.calls,0)

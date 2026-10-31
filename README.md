@@ -65,7 +65,16 @@ See the [record walkthrough](docs/records.md) for Python access and failed runs.
 
 A run folder contains `declaration.json`, `record.json`, content-addressed artifacts under `outputs/objects/`, and a local cache. The record links operation outcomes, input/output artifacts, implementation fingerprints and retained model evidence. `verify(folder)` checks record consistency; it does not establish that an answer is scientifically correct. Records include supplied data and raw model requests and responses; adapters must keep credentials out of returned evidence and error messages.
 
-The core includes sequences, bundles, per-item work, bounded iteration, checks, retries, routing, tools and record inspection. `mavc.learn` adds offline example collection and split/export utilities. `mavc.evals` adds comparisons and calibration; install `.[evals]` for its statistics functions. See [model adapters](docs/model-adapters.md) for the caller contract. No provider client or model account is bundled in the package. An opt-in [Anthropic adapter example](examples/anthropic_adapter.py) uses only the standard library; its HTTP call is mocked in tests. See the tutorial before using it with your own credentials.
+The core includes sequences, bundles, per-item work, bounded iteration, checks, retries, routing, tools and record inspection. `mavc.learn` adds offline example collection and split/export utilities. `mavc.evals` adds comparisons and calibration; install `.[evals]` for its statistics functions. See [model adapters](docs/model-adapters.md) for the caller contract. Core flows accept any caller. Optional harness integrations invoke your own installed runtimes; no account configuration is bundled. The [Anthropic HTTP example](examples/anthropic_adapter.py) remains available for a direct API adapter.
+
+| Harness | Python interface / extra | Runtime checked | Declared Python tools |
+| --- | --- | --- | --- |
+| Pi | `mavc.adapters.pi.Pi`, `.[pi]` | Public Pi 1.4.0; Node >=22.19 | Yes; checked submission and correction |
+| Codex | `mavc.adapters.codex.Codex`, `.[codex]` | CLI 0.164.0; subprocesses mocked | No; use a custom MCP caller |
+| Claude Code | `mavc.adapters.claude_code.ClaudeCode`, `.[claude-code]` | CLI 2.1.310; subprocesses mocked | No; use a custom MCP caller |
+| Other adapters | `Operation(caller=...)` | Caller-owned | Caller-owned |
+
+For an agent that searches and reads a bundled collection, rejects a bad submission and accepts its correction, follow [Pi setup](docs/pi.md), then run `python examples/pi_agent.py`. Its default mode uses the actual public Pi SDK's recorded faux provider with network disabled. `--live` opts into your own configured provider. See [CLI harnesses](docs/cli-harnesses.md) for Codex and Claude Code. The extras add no Python dependencies; install the selected runtime separately.
 
 For a results table, install `.[examples]` and run `python examples/dataframe.py runs/tutorial` after the tutorial. [The small example](examples/dataframe.py) turns completed item labels into a pandas DataFrame; pandas is optional.
 

@@ -16,6 +16,9 @@ dependencies = ["pydantic>=2.7,<3", "diskcache>=5.6,<6", "tenacity>=9,<10", "jso
 mavc = "mavc.describe:main"
 
 [project.optional-dependencies]
+pi = []
+codex = []
+claude-code = []
 evals = ["numpy>=1.26,<3", "scipy>=1.12,<2", "scikit-learn>=1.4,<2"]
 test = ["pytest>=8,<10"]
 examples = ["pandas>=2.2,<4"]
@@ -25,6 +28,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 mavc = ["py.typed"]
+"mavc.adapters" = ["*.mjs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

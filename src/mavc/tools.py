@@ -143,7 +143,7 @@ class ToolSession:
         if phase in ('observe_result', 'sdk_rejected') and row['outcome'] == 'fatal':
             row['execution_error_result'] = deepcopy(frame.get('result', frame.get('sdk_error')))
             self.record(row.copy())
-            return row['reply']  # Preserve the causal refusal when Pi reports its induced abort.
+            return row['reply']  # Preserve the causal refusal when the harness reports its induced abort.
         if phase == 'observe_result' and frame.get('isError'):
             details = frame['result'].get('details', {})
             decision = row.get('reply') or next((r.get('reply') for r in reversed(self.calls.values())
@@ -189,7 +189,7 @@ class ToolSession:
                 if phase == 'sdk_rejected':
                     message = frame.get('sdk_error', {}).get('message') or ''.join(
                         item.get('text', '') for item in frame.get('result', {}).get('content', []))
-                    raise RuntimeError('Python-valid input rejected by Pi: ' + message)
+                    raise RuntimeError('Python-valid input rejected by the harness: ' + message)
                 if phase != 'invoke' or tool.call is None:
                     raise RuntimeError('Invalid tool dispatch phase/binding')
                 result = tool.call(self, parsed)

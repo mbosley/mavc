@@ -37,14 +37,14 @@ def check_settings(request, response):
     provider = _get(observed, 'provider')
     compaction = _get(settings, 'compaction')
     seen = {'model': _get(observed, 'model'), 'reasoning': _get(observed, 'reasoning'), 'provider': provider,
-        'tools': tools, 'pool_transport': _get(actual, 'pool_transport'), 'pi_version': _get(observed, 'pi_version'),
+        'tools': tools, 'harness_version': _get(observed, 'harness_version'),
         'settings': {'tools': tools if 'tools' not in node else _MISSING,
             'transport': settings.get('transport', _get(actual, 'transport')),
             'max_output_tokens': _get(actual, 'max_output_tokens'), 'temperature': _get(actual, 'temperature'),
             'compaction': _get(compaction, 'enabled') if isinstance(node.get('settings', {}).get('compaction'), bool) else compaction,
             'cache_warming': _get(settings, 'cache_warming')},
-        'pi_retry': {'agent_enabled': _get(retry, 'enabled'), 'provider_max_retries': _get(provider_retry, 'maxRetries')},
-        'pi_settings': {'compaction': compaction, 'transport': _get(settings, 'transport'),
+        'harness_retry': {'agent_enabled': _get(retry, 'enabled'), 'provider_max_retries': _get(provider_retry, 'maxRetries')},
+        'harness_settings': {'compaction': compaction, 'transport': _get(settings, 'transport'),
             'cacheWarming': _get(settings, 'cache_warming'), 'retry': {**retry, 'provider': provider_retry}}}
     _compare('node', node, seen, result)
     upstream_model = _get(response, 'upstream_response', 'model')
@@ -52,8 +52,8 @@ def check_settings(request, response):
         _compare('upstream_response.model', node['model'], upstream_model, result)
     else:
         result['unobserved'].append('upstream_response.model')
-    if 'pi_version' in request:
-        _compare('pi_version', request['pi_version'], _get(observed, 'pi_version'), result)
+    if 'harness_version' in request:
+        _compare('harness_version', request['harness_version'], _get(observed, 'harness_version'), result)
     captured = response.get('actual_requests')
     payloads = captured or [actual]
     if not captured:
@@ -70,10 +70,7 @@ def check_settings(request, response):
         if 'tools' in payload:
             _compare(f'{prefix}.tool_names', sorted(node.get('tools', node.get('settings', {}).get('tools', []))),
                      sorted(t.get('name', t.get('type')) for t in payload['tools']), result)
-            for j, tool in enumerate(payload['tools']):
-                if tool.get('type') == 'function' and 'ordinary_function_strict' in node.get('pool_transport', {}):
-                    _compare(f'{prefix}.tools[{j}].strict', node['pool_transport']['ordinary_function_strict'], _get(tool, 'strict'), result)
-    transport = node.get('pi_settings', node.get('settings', {})).get('transport')
+    transport = node.get('harness_settings', node.get('settings', {})).get('transport')
     if transport and transport != 'auto':
         _compare('observed.request.transport', transport, _get(actual, 'transport'), result)
     if response.get('actual_requests') and 'tools' in actual:
@@ -85,7 +82,7 @@ def check_settings(request, response):
 
 def _failure(request, response, checks, *, require_content=True):
     if response.get('error') or response.get('exit_code') or response.get('stop_reason') not in ('stop', 'toolUse'):
-        return str(response.get('error') or 'Pi call failed/partial or completion unknown')
+        return str(response.get('error') or 'Model call failed/partial or completion unknown')
     if any(field in checks['unobserved'] for field in ('node.model', 'node.reasoning')) or any(not any(
             field.startswith(('actual_request', 'observed.request')) and field.endswith(suffix)
             for field in checks['checked']) for suffix in ('.model', '.reasoning.effort')):
@@ -130,7 +127,7 @@ def render(operation, input, settings, children):
     return {**settings.get('request', {}), 'node': settings,
         'system_prompt': inspect.getdoc(type(operation)) or '',
         'prompt': json.dumps(body, sort_keys=True, separators=(',', ':'), ensure_ascii=False, allow_nan=False),
-        **{key: settings[key] for key in ('pi_settings', 'terminal_tool', 'pi_version', 'route') if key in settings}}
+        **{key: settings[key] for key in ('harness_settings', 'terminal_tool', 'harness_version') if key in settings}}
 
 
 def _unique_object(pairs):
@@ -185,7 +182,7 @@ def execute(operation, children, input):
         record['request'] = request
         record['prompt_chars'] = prompt_chars(request)
         check_prompt_budget(record['prompt_chars'], settings)
-        controls = ('pi_settings', 'terminal_tool', 'pi_version', 'route')
+        controls = ('harness_settings', 'terminal_tool', 'harness_version')
         declared = {**settings.get('request', {}), **settings}
         if request.get('node') != settings or {k: request[k] for k in controls if k in request} != {
                 k: declared[k] for k in controls if k in declared}:

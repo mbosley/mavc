@@ -143,3 +143,18 @@ print(labels.groupby('label').size())
 ```
 
 This table includes only completed model-item results at that position; failed or missing items are not rows. Check `mavc show runs/tutorial` for all node outcomes before interpreting table counts. It reads records without changing them.
+
+## An agent with tools and a checked correction
+
+The earlier `Classify` example is one model call per item. [examples/pi_agent.py](../examples/pi_agent.py) demonstrates an agent session within one step: declare search/read/submit tools, supply their Python implementations through `bind_tools`, and validate the submission in Python. Its default recorded session uses public Pi 1.4.0's actual faux agent loop without network or credentials. It first submits a bad quote, gets rejected, receives a bounded correction prompt and submits the literal source text. The files in [examples/collection](../examples/collection) are synthetic teaching material and explicit fingerprint sources.
+
+Install the runtime with [docs/pi.md](pi.md), then run:
+
+```sh
+python examples/pi_agent.py runs/collection-agent
+mavc show runs/collection-agent CollectionAgent
+```
+
+Inspect the rejected and accepted `model-tool-call/v1` artifacts and the `model-session-event/v1` correction. Use a fresh folder for `--live`, with your own provider/model environment settings. The same Python checker runs live; no checked answer means no accepted output. This demonstrates execution semantics, not model accuracy.
+
+If you already use Codex or Claude Code, their [small caller adapters](cli-harnesses.md) support schema-constrained model steps behind the same interface. They do not directly host these Python tools; MCP is the route for a separate tool-capable caller. Other `Operation(caller=...)` adapters remain supported.

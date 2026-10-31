@@ -1,0 +1,1 @@
+Each sample received a unique label. The label linked the sample to its field notebook entry.

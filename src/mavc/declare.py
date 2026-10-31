@@ -28,8 +28,9 @@ class Settings(Model):
     cutoff: float | None = Field(default=None, ge=0, le=1)
     batch_size: int | None = Field(default=None, ge=1, strict=True)
     retry: RetrySettings = RetrySettings()
-    pi_settings: dict = {}
-    pi_retry: dict = {}
+    harness_version: str | None = None
+    harness_settings: dict = {}
+    harness_retry: dict = {}
     settings: dict = {}
     request: dict = {}
     legacy: dict = {}
@@ -70,7 +71,7 @@ class Declaration(Model):
             settings.setdefault('maximum_attempts', settings.get('retry', {}).get('max_attempts', 1))
             settings['settings'] = {'tools': [], 'compaction': False, 'cache_warming': 'off',
                                     'transport': 'sse', **settings.get('settings', {})}
-            settings['pi_retry'] = {'agent_enabled': False, 'provider_max_retries': 0, **settings.get('pi_retry', {})}
+            settings['harness_retry'] = {'agent_enabled': False, 'provider_max_retries': 0, **settings.get('harness_retry', {})}
         call_attempts(settings)
         return {**self.for_node(''), 'node': settings, 'position': position}
 
@@ -108,18 +109,18 @@ def source_identity(files: Iterable[str | Path], root: str | Path) -> dict[str, 
 
 
 def call_attempts(node: dict) -> int:
-    """One retry owner. Internal Pi retries consume the call budget themselves."""
+    """One retry owner. Internal harness retries consume the call budget themselves."""
     count = node.get('maximum_attempts', node.get('retry', {}).get('max_attempts', 1))
     if not isinstance(count, int) or isinstance(count, bool) or count < 1:
         raise ValueError('maximum attempts must be a positive integer')
-    pi = node.get('pi_settings', {}).get('retry', {})
-    legacy = node.get('pi_retry', {})
-    internal = (bool(node.get('provider_retry')) or pi.get('enabled', False) and pi.get('maxRetries', 0) > 0
-                or pi.get('provider', {}).get('maxRetries', 0) > 0
+    harness = node.get('harness_settings', {}).get('retry', {})
+    legacy = node.get('harness_retry', {})
+    internal = (bool(node.get('provider_retry')) or harness.get('enabled', False) and harness.get('maxRetries', 0) > 0
+                or harness.get('provider', {}).get('maxRetries', 0) > 0
                 or legacy.get('agent_enabled', False)
                 or legacy.get('provider_max_retries', 0) > 0)
     if node.get('retry_on') == 'tool_failure' and count != 2:
         raise ValueError('Tool-failure recovery requires exactly one rerun')
     if internal and count > 1 and node.get('retry_on') != 'tool_failure':
-        raise ValueError('Pi internal retries require one outer call attempt')
+        raise ValueError('Harness internal retries require one outer call attempt')
     return count
