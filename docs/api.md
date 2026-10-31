@@ -46,7 +46,7 @@ Model leaves render their docstring and input/output schemas into a request. Ove
 
 ## Runs, failures and corrections
 
-`Runner(folder, declaration, *, sources=(), metadata=None, reuse_from=None, rerun_from=None, protect_reused=False)` is a context manager. Call operations inside it and then `runner.finish(json_output, *, outcome=None)`. Closing saves the record and closes the cache. Completion is explicit; returning from the context alone does not mark the run complete.
+`Runner(folder, declaration, *, flow=None, sources=(), metadata=None, reuse_from=None, rerun_from=None, protect_reused=False)` is a context manager. `flow=flow` validates known model positions before any run folder is created; `flow.validate(declaration)` is also available. Built-in composites keep references to their children for this check; arbitrary dynamic Python compositions must explicitly validate their known children. Call operations inside it and then `runner.finish(json_output, *, outcome=None)`. Closing saves the record and closes the cache. Completion is explicit; returning from the context alone does not mark the run complete.
 
 - `runner.step(node, input, operation, *, kind=None, sources=(), depends_on=(), retry=False, output_type='node-result/v1')` is the low-level API; `operation()` receives no arguments. Prefer `Operation` for typed/composed flows.
 - `runner.retain(Artifact.create(type, value, lineage=()))` stores and returns an artifact. `runner.index()` maps executed IDs to typed NodeRecords. `runner.fanout(items, operation, *, max_concurrency=None)` returns results in input order.
@@ -57,7 +57,7 @@ Model leaves render their docstring and input/output schemas into a request. Ove
 
 ## Results, evidence and offline utilities
 
-`mavc describe <run> --summary` gives a readable outline. `mavc show <run> [node-id]` returns JSON with resolved results or a node's input/output/evidence/errors; it omits fingerprint tables. Both commands are read-only. `describe --details` includes the raw record.
+`mavc run <script> [args...]` executes a script with concise errors; set `MAVC_DEBUG=1` for the full traceback. `show` and `describe` share this error policy. Direct Python execution keeps normal tracebacks. `mavc describe <run> --summary` gives a readable outline. `mavc show <run> [node-id]` returns JSON with resolved results or a node's input/output/evidence/errors; it omits fingerprint tables. Both commands are read-only. `describe --details` includes the raw record.
 
 Python APIs in `mavc.record`: `show(folder, node=None) -> dict`, `read_json(path)`, `resolve(folder, ref) -> Artifact` (read `.value`), and `verify(folder) -> dict`. `Artifact.ref()` returns a reference. `digest(value)` hashes a JSON value. `walk_nodes(record, leaves_only=False)` from `mavc` yields `(node_id, node)` pairs for JSON or typed records. Consistency checks never establish scientific correctness. See [records.md](records.md).
 

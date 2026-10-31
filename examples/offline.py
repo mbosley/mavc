@@ -39,8 +39,9 @@ def main():
     declaration = {'flow_id': 'word-count/v1', 'positions': {
         'CountWords': {'provider': 'stub', 'model': 'recorded-word-counter', 'reasoning': 'none'},
     }}
-    with Runner(folder, declaration) as runner:
-        answer = CountWords(caller=recorded_model)(runner, {'text': 'Flows leave inspectable records.'})
+    flow = CountWords(caller=recorded_model)
+    with Runner(folder, declaration, flow=flow) as runner:
+        answer = flow(runner, {'text': 'Flows leave inspectable records.'})
         runner.finish(answer.model_dump())
     assert verify(folder)['completed']
     print(json.dumps(answer.model_dump()))

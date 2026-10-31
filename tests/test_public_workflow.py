@@ -37,7 +37,7 @@ def config(position='Review.LabelAll.Classify'):
 
 def test_wrong_position_error_names_expected_and_declared_paths(tmp_path):
     with Runner(tmp_path, config('Classify')) as runner:
-        with pytest.raises(RuntimeError) as error:
+        with pytest.raises(ValueError) as error:
             workflow()(runner, [{'id': 'one', 'text': 'A question?'}])
         message = str(error.value)
         assert "Set positions['Review.LabelAll.Classify']" in message
@@ -76,3 +76,29 @@ def test_changed_settings_names_position(tmp_path):
     changed['positions']['Review.LabelAll.Classify']['model'] = 'changed'
     with pytest.raises(NewRunRequired, match=r'positions.Review.LabelAll.Classify; use a new run directory'):
         Runner(tmp_path, changed)
+
+
+def test_preflight_rejects_misspelled_nested_model_before_creating_run(tmp_path):
+    folder = tmp_path/'must-not-exist'
+    with pytest.raises(ValueError, match="Nearest declared position: 'Review.LabelAll.Clasify'"):
+        Runner(folder, config('Review.LabelAll.Clasify'), flow=workflow())
+    assert not folder.exists()
+
+
+@pytest.mark.parametrize('command', ['show', 'describe'])
+def test_cli_wrong_path_is_one_line_with_debug_escape(tmp_path, command):
+    import os
+    args = [sys.executable, '-m', 'mavc', command, str(tmp_path/'missing')]
+    normal = subprocess.run(args, capture_output=True, text=True)
+    assert normal.returncode != 0 and len(normal.stderr.splitlines()) == 1
+    assert 'No run found' in normal.stderr and 'Traceback' not in normal.stderr
+    debug = subprocess.run(args, capture_output=True, text=True, env={**os.environ, 'MAVC_DEBUG': '1'})
+    assert debug.returncode != 0 and 'Traceback' in debug.stderr
+
+
+def test_cli_run_forwards_arguments_and_handles_script_errors(tmp_path):
+    script = tmp_path/'flow.py'
+    script.write_text("import sys\nraise ValueError('bad argument ' + sys.argv[1])\n")
+    result = subprocess.run([sys.executable, '-m', 'mavc', 'run', str(script), 'supplied'],
+                            capture_output=True, text=True)
+    assert result.returncode == 1 and result.stderr == 'ValueError: bad argument supplied\n'

@@ -217,8 +217,8 @@ class ModelTests(unittest.TestCase):
     def test_missing_position_and_conflicting_retry_ownership_do_not_call(self):
         caller=CaptureCaller();op=Mention(caller=caller)
         with self.runner({'Other':self.new}) as run:
-            with self.assertRaisesRegex(RuntimeError,'requires provider'):op(run,{'text':'source'})
-            self.assertIsNone(self.evidence(run,'Mention')['response'])
+            with self.assertRaisesRegex(ValueError,'requires provider'):op(run,{'text':'source'})
+            self.assertEqual(run.index(), {})
         invalid={**self.new,'maximum_attempts':2,'pi_retry':{'agent_enabled':True}}
         with self.assertRaisesRegex(ValueError,'one outer'):
             self.runner({'Mention':invalid},self.folder/'retry')

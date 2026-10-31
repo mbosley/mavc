@@ -191,19 +191,19 @@ def test_evidence_survives_typed_rejection_and_distinct_parallel_calls(tmp_path,
     class Typed(Add):
         run = Operation.run
     with pytest.raises(ValidationError):
-        run(tmp_path/'bad', Typed(), {'value': -1})
+        run(tmp_path/'bad', Typed(), {'value': -1}, positions={'Typed': {'provider': 'stub', 'model': 'stub', 'reasoning': 'none'}})
     leaf = read_json(tmp_path/'bad/record.json')['nodes']['Typed']
     assert leaf['output'] is None and leaf['details']['evidence']
     assert resolve(tmp_path/'bad', leaf['details']['evidence'][0]).value['raw'] == 'bad'
     assert not verify(tmp_path/'bad')['completed']
     parallel = for_each('Calls', Typed(), key=lambda row: row['value'])
     record = run(tmp_path/'parallel', parallel,
-                 [{'value': 1}, {'value': 2}], positions={'Calls': {'max_concurrency': 2}})
+                 [{'value': 1}, {'value': 2}], positions={'Calls': {'max_concurrency': 2}, 'Calls.Typed': {'provider': 'stub', 'model': 'stub', 'reasoning': 'none'}})
     evidence = [n['details']['evidence'][0] for _, n in walk_nodes(record, leaves_only=True)]
     assert len({ref['sha256'] for ref in evidence}) == 2 and verify(tmp_path/'parallel')['completed']
     original = (tmp_path/'parallel/record.json').read_bytes()
     reused = run(tmp_path/'correction', parallel, [{'value': 1}, {'value': 2}],
-                 positions={'Calls': {'max_concurrency': 2}}, reuse=tmp_path/'parallel', rerun='Calls/2')
+                 positions={'Calls': {'max_concurrency': 2}, 'Calls.Typed': {'provider': 'stub', 'model': 'stub', 'reasoning': 'none'}}, reuse=tmp_path/'parallel', rerun='Calls/2')
     leaves = dict(walk_nodes(reused, leaves_only=True))
     assert leaves['Calls/1']['reused'] and not leaves['Calls/2']['reused']
     for _, node in walk_nodes(reused, leaves_only=True):

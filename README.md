@@ -14,6 +14,8 @@ python3 -m venv .venv
 python -m pip install -e .
 ```
 
+Steps use their class name (or an explicit operation name). Settings belong to **positions**: a parent and child form `LabelAll.Classify`; nesting under `Review` makes `Review.LabelAll.Classify`. Executed **nodes** use slashes instead, such as `Review/0/one`, to identify a particular item. A model step's class docstring serves as its prompt. The bundled [`mavc.stub.classify`](src/mavc/stub.py) lets you try this offline without writing an adapter; see the [tutorial](docs/tutorial.md).
+
 Here is a small flow that runs offline:
 
 ```python
@@ -57,11 +59,15 @@ mavc show runs/offline
 mavc show runs/offline CountWords
 ```
 
+For concise errors when running your own script, use `mavc run my_flow.py` (arguments follow the filename). `MAVC_DEBUG=1 mavc run my_flow.py` restores the full traceback. Passing `flow=flow` to `Runner` checks model positions before creating a run folder; built-in flows also check before their first step.
+
 See the [record walkthrough](docs/records.md) for Python access and failed runs.
 
 A run folder contains `declaration.json`, `record.json`, content-addressed artifacts under `outputs/objects/`, and a local cache. The record links operation outcomes, input/output artifacts, implementation fingerprints and retained model evidence. `verify(folder)` checks record consistency; it does not establish that an answer is scientifically correct. Records include supplied data and raw model requests and responses; adapters must keep credentials out of returned evidence and error messages.
 
-The core includes sequences, bundles, per-item work, bounded iteration, checks, retries, routing, tools and record inspection. `mavc.learn` adds offline example collection and split/export utilities. `mavc.evals` adds comparisons and calibration; install `.[evals]` for its statistics functions. See [model adapters](docs/model-adapters.md) for the caller contract. No provider client or model account is bundled.
+The core includes sequences, bundles, per-item work, bounded iteration, checks, retries, routing, tools and record inspection. `mavc.learn` adds offline example collection and split/export utilities. `mavc.evals` adds comparisons and calibration; install `.[evals]` for its statistics functions. See [model adapters](docs/model-adapters.md) for the caller contract. No provider client or model account is bundled in the package. An opt-in [Anthropic adapter example](examples/anthropic_adapter.py) uses only the standard library; its HTTP call is mocked in tests. See the tutorial before using it with your own credentials.
+
+For a results table, install `.[examples]` and run `python examples/dataframe.py runs/tutorial` after the tutorial. [The small example](examples/dataframe.py) turns completed item labels into a pandas DataFrame; pandas is optional.
 
 To run the standalone test suite:
 

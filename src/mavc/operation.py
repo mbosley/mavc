@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Iterable, Mapping, TYPE_CHECKING
 if TYPE_CHECKING:
     from .runner import Runner
+    from .declare import Declaration
 import json
 from dataclasses import asdict
 from pydantic import BaseModel
@@ -22,6 +23,7 @@ class Operation:
     sources = ()
     caller = None
     retry = False
+    operations: tuple[Operation, ...] = ()
 
     def __init__(self, name: str | None = None, *, run: Callable[[Children, Any], Any] | None = None, composition: str | None = None, sources: tuple = (), structure: dict | None = None, caller: Callable[[dict], dict] | None = None) -> None:
         self.name = name or type(self).__name__
@@ -37,7 +39,19 @@ class Operation:
         from .model import execute
         return execute(self, children, input)
 
+    def validate(self, declaration: Declaration | dict, *, position: str | None = None) -> None:
+        """Validate model settings in this operation and known composite children."""
+        from .declare import Declaration
+        declaration = Declaration.model_validate(declaration)
+        position = position or self.name
+        if self.body is None and type(self).run is Operation.run:
+            declaration.validate_model(position)
+        for operation in self.operations:
+            operation.validate(declaration, position=position + '.' + operation.name)
+
     def __call__(self, runner: Runner, input: Any, *, name: str | None = None, node: str | None = None, kind: str | None = None, depends_on: Iterable[str] = (), _parent: str | None = None, _position: str | None = None) -> Any:
+        if _parent is None:
+            self.validate(runner.declaration)
         input = self.Input.model_validate(input) if self.Input else input
         context = Children(runner, node or name or self.name, _parent, _position or self.name, self)
         sources = (type(self), *self.sources)
@@ -97,9 +111,12 @@ class Children:
 
 
 def _compose(name, form, operations, body, **structure):
+    operations = tuple(operations)
     sources = tuple(source for op in operations for source in (type(op), *op.sources))
-    return Operation(name, run=body, composition=form, sources=sources,
-                     structure={'available_children': [op.name for op in operations], **structure})
+    result = Operation(name, run=body, composition=form, sources=sources,
+                       structure={'available_children': [op.name for op in operations], **structure})
+    result.operations = operations
+    return result
 
 
 def sequence(name: str, operations: Iterable[Operation]) -> Operation:

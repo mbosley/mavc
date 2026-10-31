@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Any, Callable, Iterable, TYPE_CHECKING
 if TYPE_CHECKING:
-    from .operation import Children
+    from .operation import Children, Operation
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import RLock
@@ -61,10 +61,12 @@ def failure_outcome(error: Exception) -> Outcome:
 
 class Runner:
     def __init__(self, folder: str | Path, declaration: Declaration | dict, *, implementations: dict | None = None, sources: tuple = (), metadata: dict | None = None, rerun_from: str | None = None, reuse_from: str | Path | None = None,
-                 protect_reused: bool = False) -> None:
+                 protect_reused: bool = False, flow: Operation | None = None) -> None:
+        self.declaration = Declaration.model_validate(declaration)
+        if flow is not None:
+            flow.validate(self.declaration)
         self.folder = Path(folder)
         self.folder.mkdir(parents=True, exist_ok=True)
-        self.declaration = Declaration.model_validate(declaration)
         self.implementations = {} if implementations is None else implementations
         self.sources = tuple(sources)
         self.core = {'mavc/' + name: value for name, value in

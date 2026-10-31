@@ -1,6 +1,9 @@
 import argparse
 from collections import Counter
 import json
+import os
+import runpy
+import sys
 import re
 from pathlib import Path
 from .tree import walk_nodes
@@ -71,12 +74,31 @@ def main() -> None:
     values = commands.add_parser('show', help='Read final results or one node with its evidence as JSON')
     values.add_argument('folder')
     values.add_argument('node', nargs='?')
+    script = commands.add_parser('run', help='Run a Python flow script with concise errors')
+    script.add_argument('script')
+    script.add_argument('script_args', nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    if args.command == 'show':
-        from .record import show
-        try:
-            print(json.dumps(show(args.folder, args.node), indent=2, ensure_ascii=False))
-        except ValueError as exc:
-            parser.exit(2, f'{exc}\n')
-    else:
-        print(describe(args.folder, summary=args.summary, details=args.details))
+    try:
+        if args.command == 'run':
+            previous = sys.argv
+            previous_path = sys.path[:]
+            try:
+                sys.path.insert(0, str(Path(args.script).resolve().parent))
+                sys.argv = [args.script, *args.script_args]
+                runpy.run_path(args.script, run_name='__main__')
+            finally:
+                sys.argv = previous
+                sys.path[:] = previous_path
+        else:
+            if not (Path(args.folder) / 'record.json').is_file() and not (
+                    args.command == 'describe' and Path(args.folder).is_file()):
+                raise FileNotFoundError(f'No run found at {args.folder!r}; expected a directory containing record.json')
+            if args.command == 'show':
+                from .record import show
+                print(json.dumps(show(args.folder, args.node), indent=2, ensure_ascii=False))
+            else:
+                print(describe(args.folder, summary=args.summary, details=args.details))
+    except Exception as exc:
+        if os.environ.get('MAVC_DEBUG') == '1':
+            raise
+        parser.exit(1, f'{type(exc).__name__}: {" ".join(str(exc).splitlines())}\n')

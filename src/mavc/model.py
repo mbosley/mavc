@@ -180,12 +180,7 @@ def execute(operation, children, input):
     try:
         if settings.get('unavailable'):
             raise ValueError(settings['unavailable'])
-        if not all(settings.get(key) for key in ('provider', 'model', 'reasoning')):
-            missing = ', '.join(key for key in ('provider', 'model', 'reasoning') if not settings.get(key))
-            declared = ', '.join(sorted(children.runner.declaration.positions)) or '(none)'
-            raise ValueError(f'Model position {children.position!r} requires provider, model and reasoning; '
-                             f'missing: {missing}. Set positions[{children.position!r}]. '
-                             f'Declared positions: {declared}. Child positions use parent + "." + operation.name')
+        children.runner.declaration.validate_model(children.position)
         request = renderer(input, settings, children) if renderer else render(operation, input, settings, children)
         record['request'] = request
         record['prompt_chars'] = prompt_chars(request)

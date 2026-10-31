@@ -1,6 +1,7 @@
 """A declaration is configuration, not a flow compiler."""
 from __future__ import annotations
 from typing import Iterable
+from difflib import get_close_matches
 import hashlib
 from pathlib import Path
 from typing import Literal
@@ -72,6 +73,20 @@ class Declaration(Model):
             settings['pi_retry'] = {'agent_enabled': False, 'provider_max_retries': 0, **settings.get('pi_retry', {})}
         call_attempts(settings)
         return {**self.for_node(''), 'node': settings, 'position': position}
+
+    def validate_model(self, position: str) -> None:
+        """Check a known model position without starting work or invoking its caller."""
+        settings = self.for_position(position)['node']
+        if settings.get('unavailable'):
+            return
+        missing = [key for key in ('provider', 'model', 'reasoning') if not settings.get(key)]
+        if missing:
+            declared = ', '.join(sorted(self.positions)) or '(none)'
+            nearest = get_close_matches(position, self.positions, n=1)
+            hint = f' Nearest declared position: {nearest[0]!r}.' if nearest else ''
+            raise ValueError(f'Model position {position!r} requires provider, model and reasoning; '
+                             f'missing: {", ".join(missing)}. Set positions[{position!r}]. '
+                             f'Declared positions: {declared}.{hint} Child positions use parent + "." + operation.name')
 
     def snapshot(self) -> dict:
         value = self.model_dump(exclude={'positions'})

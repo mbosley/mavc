@@ -46,7 +46,7 @@ def main():
             {'id': 'two', 'text': 'The input is supplied.'},
             {'id': 'three', 'text': 'Can we inspect the evidence?'}]
     folder = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('runs/tutorial')
-    with Runner(folder, declaration) as runner:
+    with Runner(folder, declaration, flow=flow) as runner:
         answer = flow(runner, data)
         runner.finish(answer)
     assert verify(folder)['completed']

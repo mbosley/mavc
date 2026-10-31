@@ -66,13 +66,13 @@ declaration = {'flow_id': 'text-labels/v1', 'positions': {
 data = [{'id': 'one', 'text': 'Is the record complete?'},
         {'id': 'two', 'text': 'The input is supplied.'},
         {'id': 'three', 'text': 'Can we inspect the evidence?'}]
-with Runner('runs/my-labels', declaration) as runner:
+with Runner('runs/my-labels', declaration, flow=flow) as runner:
     answer = flow(runner, data)
     runner.finish(answer)
 print(answer)
 ```
 
-`sequence` passes the output of one operation into the next. `for_each` applies one operation to each item, preserving input order; `key` must return a unique, stable ID. Settings use **positions**, built as the parent position + `"."` + the child's operation name. Here the model position is `Review.LabelAll.Classify`. Without the outer sequence, `for_each('LabelAll', Classify(...), ...)` would use `LabelAll.Classify`; a standalone `Classify(...)` uses `Classify`. Setting `positions['Classify']` does not configure its nested instances. Renaming an operation changes its position.
+`sequence` passes the output of one operation into the next. `for_each` applies one operation to each item, preserving input order; `key` must return a unique, stable ID. Settings use **positions**, built as the parent position + `"."` + the child's operation name. Here the model position is `Review.LabelAll.Classify`. Without the outer sequence, `for_each('LabelAll', Classify(...), ...)` would use `LabelAll.Classify`; a standalone `Classify(...)` uses `Classify`. Setting `positions['Classify']` does not configure its nested instances. Renaming an operation changes its position. `Runner(..., flow=flow)` validates known model positions before creating the folder and suggests the nearest declared spelling when one is missing. Calling a built-in flow also validates its known children before any step executes. Custom Python compositions whose children are created dynamically can validate them explicitly with `child.validate(declaration, position=full_path)`; MAVC cannot discover an arbitrary Python call graph.
 
 Node IDs identify actual invocations: `Review/0/one` is the model call for the first text, while its position remains `Review.LabelAll.Classify`. The `0` comes from the first operation in the sequence; `one` comes from `key`. All three item nodes share the same position settings. The check is `Review/1`, with position `Review.Check`. See `mavc show runs/tutorial` for the executed IDs.
 
@@ -94,3 +94,52 @@ with Runner('runs/correction', declaration,
 ```
 
 `rerun_from` selects that node, its children and dependent downstream work. Ancestor compositions execute again to assemble results. This example selects the final check; select an item node to rerun a particular model call. Changing a shared source file can invalidate several nodes because fingerprints cover defining files, so use a full fresh run if broader changes make reuse refuse. The stub's result is a demonstration, not an evaluation on held-out documents.
+
+## Concise errors
+
+Use `mavc run examples/tutorial.py runs/tutorial-v3` to run a script with one-line errors and a nonzero exit code on failure. It forwards arguments after the filename. `MAVC_DEBUG=1 mavc run ...` restores Python tracebacks. `show` and `describe` use the same error handling, including missing run paths. Direct `python script.py` keeps normal Python exception behavior.
+
+## Use a provider when you choose to
+
+[examples/anthropic_adapter.py](../examples/anthropic_adapter.py) is a worked, opt-in adapter using Python's standard library. It follows the official [Messages API](https://platform.claude.com/docs/en/api/messages/create) and [authentication contract](https://platform.claude.com/docs/en/api/overview). Importing the file does not call the service. Its HTTP boundary is mocked in tests; no live-provider result is claimed.
+
+To adapt the flow above, first supply your own `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` through your environment, outside the source and run record. Use a workspace-scoped key and an exact model ID supporting effort and JSON-schema output. Do not put either key or account details in a declaration. Then replace the caller and settings and choose a new run folder:
+
+```python
+import os
+from examples.anthropic_adapter import call
+
+flow = sequence('Review', [
+    for_each('LabelAll', Classify(caller=call), key=lambda row: row['id']), Check(),
+])
+declaration = {'flow_id': 'text-labels/provider-v1', 'positions': {
+    'Review.LabelAll.Classify': {
+        'provider': 'anthropic', 'model': os.environ['ANTHROPIC_MODEL'], 'reasoning': 'low',
+        'settings': {'transport': 'json', 'max_output_tokens': 512},
+    },
+}}
+# Running this block makes real API calls using your own account.
+with Runner('runs/provider-labels', declaration, flow=flow) as runner:
+    runner.finish(flow(runner, data))
+```
+
+Run this from a script in the repository root so `examples` can be imported. The example supports flat object schemas such as `Label`, one non-streaming HTTP request, a timeout, no tools and no automatic retries. It maps declared reasoning to provider effort and keeps raw JSON request/response bodies without authentication headers. `observed.request` is a normalized settings view; `provider_request` is the exact wire JSON. Missing optional provider observations remain explicit. Truncation, refusal, model-ID mismatch and invalid output fail rather than becoming accepted cached results. A live call can incur provider charges; the bundled stub remains the default for every offline example and test.
+
+## A DataFrame of per-item results
+
+Pandas stays outside MAVC's core dependencies:
+
+```sh
+python -m pip install -e '.[examples]'
+python examples/dataframe.py runs/tutorial
+```
+
+The [example](../examples/dataframe.py) reads the recorded tree, resolves completed outputs at `Review.LabelAll.Classify`, and returns a DataFrame with `node`, `id`, `label` columns. For the tutorial it has three rows. In a notebook or repository-root script:
+
+```python
+from examples.dataframe import labels_frame
+labels = labels_frame('runs/tutorial')
+print(labels.groupby('label').size())
+```
+
+This table includes only completed model-item results at that position; failed or missing items are not rows. Check `mavc show runs/tutorial` for all node outcomes before interpreting table counts. It reads records without changing them.
