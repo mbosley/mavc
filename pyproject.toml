@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mavc"
+version = "0.1.0"
+readme = "README.md"
+description = "Plain Python scientific agent flows with declarations and offline run records"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = ["pydantic>=2.7,<3", "diskcache>=5.6,<6", "tenacity>=9,<10", "jsonschema>=4.22,<5"]
+
+[project.scripts]
+mavc = "mavc.describe:main"
+
+[project.optional-dependencies]
+evals = ["numpy>=1.26,<3", "scipy>=1.12,<2", "scikit-learn>=1.4,<2"]
+test = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
