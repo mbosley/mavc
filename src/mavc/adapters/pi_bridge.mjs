@@ -20,7 +20,7 @@ export async function runPi(request, root, dispatch) {
   const node = request.node, knobs = node.settings ?? {};
   const {recorded_turns: recording, ...overrides} = node.harness_settings ?? {};
   const runtime = await sdk.ModelRuntime.create({credentials: new ai.InMemoryCredentialStore(),
-    modelsStore: new ai.InMemoryModelsStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false});
+    modelsStore: new ai.InMemoryModelsStore(), modelsPath: process.env.MAVC_PI_MODELS ?? null, refreshOnCreate: false, allowModelNetwork: false});
   if (recording !== undefined) {
     if (node.provider !== 'faux' || !Array.isArray(recording))
       throw new Error('recorded_turns requires provider=faux and a list of scripted assistant turns');

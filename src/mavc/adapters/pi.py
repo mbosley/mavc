@@ -39,12 +39,22 @@ def _stop(child, drain=False):
         child.wait()
 
 
+class PiNotInstalled(ValueError):
+    """The optional npm runtime has not been installed or selected."""
+
+
+def require_runtime(pi_root: str | Path | None = None) -> Path:
+    root = pi_root or os.environ.get('MAVC_PI_ROOT')
+    if not root or not (Path(root) / 'node_modules/@earendil-works/pi-coding-agent/package.json').is_file():
+        raise PiNotInstalled('Pi is not installed; see docs/pi.md '
+                             f'(npm install --prefix .pi-runtime @earendil-works/pi-coding-agent@{PI_VERSION}; '
+                             'set MAVC_PI_ROOT to that directory)')
+    return Path(root).resolve()
+
+
 def call(request: dict, *, tool_dispatch: Callable | None = None, pi_root: str | Path | None = None) -> dict:
     """Use an isolated npm install; credentials are resolved by Pi from its standard environment."""
-    root = pi_root or os.environ.get('MAVC_PI_ROOT')
-    if not root:
-        raise ValueError('Set MAVC_PI_ROOT to the directory containing node_modules after installing '
-                         f'@earendil-works/pi-coding-agent@{PI_VERSION}; see docs/pi.md')
+    root = require_runtime(pi_root)
     limit = request['node'].get('timeout_seconds', 600)
     cap = request['node'].get('max_output_bytes')
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
@@ -73,6 +83,10 @@ class Pi(Operation):
     """Subclass like Operation; bind_tools supplies Python tools when declared."""
     sources = (_BRIDGE, Path(__file__).with_name('_duplex.py'))
     caller = staticmethod(call)
+
+    def validate(self, declaration, *, position: str | None = None) -> None:
+        super().validate(declaration, position=position)
+        require_runtime()
 
     def bind_caller(self, dispatch: Callable) -> Callable:
         return partial(self.caller, tool_dispatch=dispatch)

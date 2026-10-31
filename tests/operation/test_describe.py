@@ -246,3 +246,12 @@ def test_repeated_routes_hide_answer_payloads_and_ids_but_retain_choice(tmp_path
     assert '"fallback_reason": "low_confidence"' in text
     assert 'opaque-' not in text and 'private_row' not in text
     assert 'private_row' in describe(tmp_path, details=True)
+
+
+def test_summary_explains_the_failure_at_its_node(tmp_path):
+    write_json(tmp_path/'record.json', {'outcome': {'status': 'failed', 'reason': 'No checked submission accepted'},
+        'nodes': {'Agent': node('Agent', 'failed', outcome={'status': 'failed', 'reason': 'No checked submission accepted'})},
+        'outputs': None})
+    text = describe(tmp_path, summary=True)
+    assert 'failure (Agent): No checked submission accepted' in text
+    assert 'failed steps: 1' in text

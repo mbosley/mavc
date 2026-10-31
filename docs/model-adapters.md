@@ -11,7 +11,7 @@ Return observations so MAVC can compare declared and executed settings:
 - `upstream_response` may include `model` and `status: "completed"`; `observed.response.status` may contain the HTTP status.
 - Optional `error`, nonzero `exit_code`, incomplete upstream status, mismatched settings and missing required model/reasoning observations prevent caching an answer.
 
-Missing optional observations are recorded as `unobserved`, not assumed correct. See [the offline example](../examples/offline.py) for a minimal executable response. Public Pi SDK sessions are tested with a faux provider and mocked HTTP; Codex/Claude Code subprocesses and the direct HTTP example are mocked. No live provider inference is tested.
+Missing optional observations are recorded as `unobserved`, not assumed correct. See [the offline example](../examples/offline.py) for a minimal executable response. Public Pi SDK sessions are tested with a faux provider and mocked HTTP; Codex/Claude Code subprocesses and the direct HTTP example are mocked. The automated suite makes no live provider requests.
 
 `settings` contains common model knobs, while `harness_settings` contains the selected harness's native session options. `harness_retry` describes agent recovery (`agent_enabled`) and provider retries (`provider_max_retries`); MAVC's outer `retry`/`maximum_attempts` is separate. `harness_version` pins an observed runtime version. `request` holds explicit renderer fields, such as `terminal_tool` (the checked submission tool name). The `legacy` boundary can retain caller-specific historical fields, but is not a transport selector. Provider/model selection belongs to the selected caller.
 

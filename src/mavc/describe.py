@@ -26,7 +26,7 @@ def describe(folder: str | Path, *, summary: bool = False, details: bool = False
             if route:
                 state['route'] = {k: route.get(k) for k in ('route', 'model', 'fallback_reason')}
             if operation.get('tools'):
-                state['tools'] = operation['tools']
+                state['tools'] = [tool['name'] for tool in operation['tools']] if summary else operation['tools']
             settings = node['declaration'].get('node', {})
             yield (node.get('position') or name, purpose, node.get('composition', ''), json.dumps(node['outcome'], sort_keys=True),
                    json.dumps(operation.get('signature', {}).get('output', {})),
@@ -55,6 +55,12 @@ def describe(folder: str | Path, *, summary: bool = False, details: bool = False
     lines = [f"status: {record['outcome']['status']}", 'steps:'] if len(record['nodes']) != 1 else []
     render(Counter(group(record['nodes'])), indent='  ' if len(record['nodes']) != 1 else '', root=len(record['nodes']) == 1)
     if summary:
+        failures = [(name, node['outcome'].get('reason')) for name, node in walk_nodes(record, leaves_only=True)
+                    if node['outcome']['status'] != 'completed' and node['outcome'].get('reason')]
+        if failures:
+            lines.extend(f'failure ({name}): {reason}' for name, reason in failures)
+        elif record['outcome'].get('reason') and record['outcome']['status'] != 'completed':
+            lines.append(f"failure: {record['outcome']['reason']}")
         ref = record.get('outputs')
         value = json.loads((Path(folder) / 'outputs/objects' / (ref['sha256'] + '.json')).read_text())['value'] if ref else {}
         lines.extend(['results:'] + [f"  {key}: {len(v) if isinstance(v, list) else json.dumps(v, ensure_ascii=False)}" for key, v in (value if isinstance(value, dict) else {'output items': value}).items() if type(v) in (int, float, list, dict)])

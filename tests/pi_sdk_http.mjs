@@ -4,8 +4,10 @@ import {pathToFileURL} from 'node:url';
 import {findPackageJSON} from 'node:module';
 const root = process.env.MAVC_PI_ROOT;
 let sent = 0, modelId;
-globalThis.fetch = async () => {
+const urls = [];
+globalThis.fetch = async url => {
   sent++;
+  urls.push(String(url));
   const chunk = (delta, finish_reason, usage) => 'data: ' + JSON.stringify({id: 'example-response',
     object: 'chat.completion.chunk', created: 0, model: modelId,
     choices: [{index: 0, delta, finish_reason}], ...(usage ? {usage} : {})}) + '\n\n';
@@ -27,4 +29,4 @@ const request = {node: {provider: selected.provider, model: modelId, reasoning: 
   settings: {tools: [], transport: 'sse', compaction: false, cache_warming: 'off'}},
   harness_version: '1.4.0', system_prompt: 'Return a JSON object with an answer string.', prompt: 'A generic example.'};
 const response = await runPi(request, root, () => {throw new Error('This test declares no tools');});
-process.stdout.write(JSON.stringify({request, response, sent}));
+process.stdout.write(JSON.stringify({request, response, sent, urls}));

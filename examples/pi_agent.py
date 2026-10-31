@@ -5,7 +5,7 @@ import os
 
 from pydantic import BaseModel
 from mavc import Runner, verify
-from mavc.adapters.pi import Pi, PI_VERSION
+from mavc.adapters.pi import Pi, PI_VERSION, PiNotInstalled
 from mavc.tools import Tool, ToolInput, ToolRejection
 
 COLLECTION = Path(__file__).with_name('collection')
@@ -102,4 +102,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except PiNotInstalled as error:
+        if os.environ.get('MAVC_DEBUG') == '1':
+            raise
+        raise SystemExit(str(error))

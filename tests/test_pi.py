@@ -6,7 +6,7 @@ import sys
 
 import pytest
 from mavc import Runner, verify
-from mavc.adapters.pi import call, PI_VERSION
+from mavc.adapters.pi import call, PI_VERSION, PiNotInstalled
 from mavc.record import show
 
 sdk = pytest.mark.skipif(not os.environ.get('MAVC_PI_ROOT'), reason='Optional Pi SDK: install docs/pi.md runtime and set MAVC_PI_ROOT')
@@ -92,15 +92,23 @@ def test_pi_agent_example_is_offline_and_writes_a_verified_run(tmp_path):
 
 
 @sdk
-def test_public_pi_provider_http_is_mocked_and_local_paths_are_not_sent(monkeypatch):
+@pytest.mark.parametrize('custom_models', [False, True])
+def test_public_pi_provider_http_is_mocked_and_local_paths_are_not_sent(monkeypatch, tmp_path, custom_models):
     monkeypatch.setenv('GROQ_API_KEY', 'unused')
+    monkeypatch.delenv('MAVC_PI_MODELS', raising=False)
     import json
+    if custom_models:
+        config = tmp_path/'models.json'
+        config.write_text(json.dumps({'providers': {'groq': {'baseUrl': 'https://provider.invalid/v1'}}}))
+        monkeypatch.setenv('MAVC_PI_MODELS', str(config))
     from mavc.model import check_settings, _failure
     bridge = Path(__file__).parents[1]/'src/mavc/adapters/pi_bridge.mjs'
     result = subprocess.run(['node', str(Path(__file__).with_name('pi_sdk_http.mjs')), str(bridge)],
                             capture_output=True, text=True, check=True)
     value = json.loads(result.stdout)
     assert value['sent'] == 1
+    if custom_models:
+        assert value['urls'][0].startswith('https://provider.invalid/v1/')
     request, response = value['request'], value['response']
     assert response['mode'] == 'live' and response['text'] == '{"answer":"example"}'
     checks = check_settings(request, response)
@@ -109,3 +117,15 @@ def test_public_pi_provider_http_is_mocked_and_local_paths_are_not_sent(monkeypa
     payload = json.dumps(response['provider_requests'])
     assert str(Path.cwd()) not in payload and '<cwd>' not in payload
     assert 'unused' not in payload and 'Authorization' not in payload
+
+
+def test_missing_npm_runtime_is_one_line_before_run_creation(tmp_path):
+    env = {**os.environ, 'MAVC_PI_ROOT': str(tmp_path/'not-installed')}
+    env.pop('MAVC_DEBUG', None)
+    folder = tmp_path/'run'
+    result = subprocess.run([sys.executable, str(Path(__file__).parents[1]/'examples/pi_agent.py'), str(folder)],
+                            capture_output=True, text=True, env=env)
+    assert result.returncode != 0 and not folder.exists()
+    assert len(result.stderr.splitlines()) == 1
+    assert 'Pi is not installed; see docs/pi.md (npm install' in result.stderr
+    assert 'Traceback' not in result.stderr
